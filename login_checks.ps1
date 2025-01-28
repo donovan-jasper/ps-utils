@@ -14,7 +14,7 @@
     - Continues running until closed (or Ctrl+C)
 
 .NOTES
-    Save as "login_check.ps1"
+    Save as "login_checks.ps1"
     Run in PowerShell (Administrator).
     Adjust intervals, etc., as needed.
 #>
