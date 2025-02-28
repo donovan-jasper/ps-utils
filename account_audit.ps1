@@ -1,17 +1,21 @@
-<#
+ <#
 .SYNOPSIS
-    Removes members from sensitive groups and disables default accounts based on machine role.
+    Removes members from sensitive groups, disables default accounts based on machine role,
+    creates a privileged account if specified, and (optionally) creates a backup Domain Admin account.
 
 .DESCRIPTION
     This script performs the following actions:
+      - Optionally creates a backup Domain Admin account (if -AddAdmin is specified) by prompting for credentials.
       - Detects if the machine is a Domain Controller.
       - Exports the current group memberships for backup.
       - Removes members from sensitive groups (on a DC) or the local Administrators group (non-DC) while honoring exclusions.
       - Disables default Administrator and Guest accounts (domain or local based on machine role).
-      - Logs details of the users removed to a dedicated log file (appending with timestamps and extra details).
+      - Clears the adminCount attribute from AD users that are no longer in any protected group.
+      - Logs details of the actions performed to a dedicated log file.
+      - **New:** Creates a privileged account (domain or local) using a name and password specified at runtime.
 
 .PARAMETER ExcludeUsers
-    A comma-separated list of usernames or group names to exclude from removal.
+    An array of usernames or group names to exclude from removal. You can now pass comma-separated values without quotes.
 
 .PARAMETER ExcludeUser
     An additional user to exclude from removal.
@@ -22,10 +26,19 @@
 .PARAMETER DryRun
     If specified, the script will simulate actions without making any actual changes.
 
-.EXAMPLE
-    .\Remove-AdminMembers.ps1 -ExcludeUsers "AdminUser1,AdminGroup1" -ExcludeUser "CriticalServiceUser" -Interval 3600
+.PARAMETER PrivAccountName
+    The name for the privileged account to be created.
 
-    This runs the removal process every 3600 seconds (1 hour), excluding both the comma‐separated list and the additional user, and making actual changes.
+.PARAMETER PrivAccountPassword
+    The password for the privileged account as a SecureString.
+
+.PARAMETER AddAdmin
+    If specified, a backup Domain Admin account will be created. The username and password will be prompted for at runtime.
+
+.EXAMPLE
+    .\Remove-AdminMembers.ps1 -ExcludeUsers administrator, krbtgt -ExcludeUser CriticalServiceUser -Interval 3600 -PrivAccountName SafeAdmin -PrivAccountPassword (Read-Host -AsSecureString) -AddAdmin
+
+    This runs the removal process every 3600 seconds (1 hour), excluding the provided users, creates a privileged account named "SafeAdmin" using the provided password, and (since -AddAdmin is specified) prompts for and creates a backup Domain Admin account.
     
 .NOTES
     Ensure you have backups of current group memberships before executing the script.
@@ -34,8 +47,8 @@
 
 [CmdletBinding()]
 param (
-    [Parameter(Mandatory = $false, HelpMessage = "Comma-separated list of users or groups to exclude from removal.")]
-    [string]$ExcludeUsers,
+    [Parameter(Mandatory = $false, HelpMessage = "Array of users or groups to exclude from removal.")]
+    [string[]]$ExcludeUsers,
 
     [Parameter(Mandatory = $false, HelpMessage = "Additional user to exclude from removal.")]
     [string]$ExcludeUser,
@@ -44,7 +57,16 @@ param (
     [int]$Interval = 0,
 
     [Parameter(Mandatory = $false, HelpMessage = "Perform a dry run without making actual changes.")]
-    [switch]$DryRun
+    [switch]$DryRun,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Name for the privileged account to be created.")]
+    [string]$PrivAccountName,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Password for the privileged account as a SecureString.")]
+    [SecureString]$PrivAccountPassword,
+
+    [Parameter(Mandatory = $false, HelpMessage = "If specified, a backup Domain Admin account will be created with prompted credentials.")]
+    [switch]$AddAdmin
 )
 
 # ------------------------ #
@@ -287,7 +309,165 @@ function Remove-LocalGroupMembers {
     Write-Log -Message "Completed processing for Local Administrators group." -Level "INFO"
 }
 
-# Encapsulate the main removal process in a function
+# New Function: Clear-AdminCount
+function Clear-AdminCount {
+    # Ensure the ActiveDirectory module is available.
+    Import-Module ActiveDirectory -ErrorAction SilentlyContinue
+
+    # Define the list of protected groups whose membership triggers SD propagation.
+    $protectedGroupNames = @(
+        "Domain Admins",
+        "Enterprise Admins",
+        "Schema Admins",
+        "Administrators",
+        "Account Operators",
+        "Backup Operators",
+        "Server Operators"
+    )
+
+    # Get all users that have adminCount set to 1
+    $users = Get-ADUser -Filter { adminCount -eq 1 } -Properties adminCount
+
+    foreach ($user in $users) {
+        # Get the groups the user is a member of
+        $userGroups = Get-ADPrincipalGroupMembership -Identity $user
+        $isMember = $false
+        
+        # Check if the user is still a member of any protected group
+        foreach ($group in $userGroups) {
+            if ($protectedGroupNames -contains $group.Name) {
+                $isMember = $true
+                break
+            }
+        }
+        
+        # If the user is not a member of any protected group, clear adminCount
+        if (-not $isMember) {
+            Write-Log -Message "Clearing adminCount for user: $($user.SamAccountName)" -Level "INFO"
+            if (-not $DryRun) {
+                Set-ADUser -Identity $user -Clear adminCount
+            }
+        }
+        else {
+            Write-Log -Message "User $($user.SamAccountName) is still a member of a protected group; skipping." -Level "INFO"
+        }
+    }
+}
+
+# New Function: Create-PrivilegedAccount (for general privileged account creation)
+function Create-PrivilegedAccount {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AccountName,
+        [Parameter(Mandatory=$true)]
+        [System.Security.SecureString]$AccountPassword
+    )
+
+    if ($global:IsDC) {
+        # Create a privileged AD user
+        try {
+            $existingUser = Get-ADUser -Filter "SamAccountName -eq '$AccountName'" -ErrorAction SilentlyContinue
+            if ($existingUser) {
+                Write-Log -Message "Privileged AD account '$AccountName' already exists." -Level "INFO"
+            }
+            else {
+                $userParams = @{
+                    Name            = $AccountName
+                    SamAccountName  = $AccountName
+                    AccountPassword = $AccountPassword
+                    Enabled         = $true
+                    Path            = "CN=Users,$((Get-ADDomain).DistinguishedName)"
+                }
+                if (-not $DryRun) {
+                    New-ADUser @userParams
+                    Write-Log -Message "Created privileged AD account '$AccountName'." -Level "INFO"
+                    # Optionally, add the account to a privileged group, for example:
+                    # Add-ADGroupMember -Identity "Domain Admins" -Members $AccountName
+                }
+                else {
+                    Write-Log -Message "DryRun: Would create privileged AD account '$AccountName'." -Level "INFO"
+                }
+            }
+        }
+        catch {
+            Write-Log -Message "Error creating privileged AD account '$AccountName': $_" -Level "ERROR"
+        }
+    }
+    else {
+        # Create a local privileged account
+        try {
+            if (-not (Get-Module -ListAvailable -Name Microsoft.PowerShell.LocalAccounts)) {
+                Write-Log -Message "Microsoft.PowerShell.LocalAccounts module missing. Cannot create local account." -Level "ERROR"
+                return
+            }
+            Import-Module Microsoft.PowerShell.LocalAccounts -ErrorAction SilentlyContinue
+
+            $existingUser = Get-LocalUser -Name $AccountName -ErrorAction SilentlyContinue
+            if ($existingUser) {
+                Write-Log -Message "Privileged local account '$AccountName' already exists." -Level "INFO"
+            }
+            else {
+                if (-not $DryRun) {
+                    New-LocalUser -Name $AccountName -Password $AccountPassword -FullName $AccountName -Description "Privileged account created by script"
+                    Write-Log -Message "Created privileged local account '$AccountName'." -Level "INFO"
+                    # Add the new account to the Administrators group
+                    Add-LocalGroupMember -Group "Administrators" -Member $AccountName
+                    Write-Log -Message "Added '$AccountName' to local Administrators group." -Level "INFO"
+                }
+                else {
+                    Write-Log -Message "DryRun: Would create privileged local account '$AccountName' and add it to Administrators group." -Level "INFO"
+                }
+            }
+        }
+        catch {
+            Write-Log -Message "Error creating privileged local account '$AccountName': $_" -Level "ERROR"
+        }
+    }
+}
+
+# New Function: Create-DomainAdminBackupAccount (creates backup Domain Admin account and adds it to Domain Admins)
+function Create-DomainAdminBackupAccount {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AccountName,
+        [Parameter(Mandatory=$true)]
+        [System.Security.SecureString]$AccountPassword
+    )
+
+    if (-not $global:IsDC) {
+        Write-Log -Message "Machine is not a Domain Controller. Domain admin backup account not created." -Level "WARNING"
+        return
+    }
+    try {
+        $existingUser = Get-ADUser -Filter "SamAccountName -eq '$AccountName'" -ErrorAction SilentlyContinue
+        if ($existingUser) {
+            Write-Log -Message "Domain admin backup account '$AccountName' already exists." -Level "INFO"
+        }
+        else {
+            $userParams = @{
+                Name            = $AccountName
+                SamAccountName  = $AccountName
+                AccountPassword = $AccountPassword
+                Enabled         = $true
+                Path            = "CN=Users,$((Get-ADDomain).DistinguishedName)"
+            }
+            if (-not $DryRun) {
+                New-ADUser @userParams
+                Write-Log -Message "Created domain admin backup account '$AccountName'." -Level "INFO"
+                # Add the new account to the Domain Admins group
+                Add-ADGroupMember -Identity "Domain Admins" -Members $AccountName
+                Write-Log -Message "Added '$AccountName' to Domain Admins group." -Level "INFO"
+            }
+            else {
+                Write-Log -Message "DryRun: Would create domain admin backup account '$AccountName' and add it to Domain Admins." -Level "INFO"
+            }
+        }
+    }
+    catch {
+        Write-Log -Message "Error creating domain admin backup account '$AccountName': $_" -Level "ERROR"
+    }
+}
+
 function Invoke-RemovalProcess {
     # Determine if the machine is a Domain Controller
     try {
@@ -317,10 +497,11 @@ function Invoke-RemovalProcess {
     # Combine exclusions from both parameters into an array
     $Exclusions = @()
     if ($ExcludeUsers) {
-        $Exclusions = $ExcludeUsers -split ',' | ForEach-Object { $_.Trim() }
+        # Since ExcludeUsers is an array, just trim each element
+        $Exclusions += $ExcludeUsers | ForEach-Object { $_.Trim() }
     }
     if ($ExcludeUser) {
-        $Exclusions += $ExcludeUser
+        $Exclusions += $ExcludeUser.Trim()
     }
 
     # For AD (DC) exclusions, convert provided names to Distinguished Names
@@ -363,12 +544,42 @@ function Invoke-RemovalProcess {
     # Disable default accounts
     Disable-DefaultAccounts
 
+    # After removal, clear adminCount for users no longer in protected groups (only on DC)
+    if ($IsDC) {
+        Clear-AdminCount
+    }
+
     Write-Log -Message "Removal process iteration completed." -Level "INFO"
 }
 
 # ------------------------ #
 #      Main Execution      #
 # ------------------------ #
+
+# If the -AddAdmin flag is specified, prompt for backup Domain Admin account credentials and create the account
+if ($AddAdmin) {
+    try {
+        $isDCForBackup = (Get-WmiObject -Class Win32_ComputerSystem).DomainRole -ge 4
+    }
+    catch {
+        $isDCForBackup = $false
+    }
+    if ($isDCForBackup) {
+        $backupUsername = Read-Host "Enter domain admin backup account username"
+        $backupPassword = Read-Host "Enter domain admin backup account password" -AsSecureString
+        Create-DomainAdminBackupAccount -AccountName $backupUsername -AccountPassword $backupPassword
+        # Add the backup account to the exclusions to protect it from removal
+        $ExcludeUsers = $ExcludeUsers + $backupUsername
+    }
+    else {
+        Write-Log -Message "AddAdmin flag specified but machine is not a Domain Controller. Skipping creation of backup domain admin account." -Level "WARNING"
+    }
+}
+
+# If a privileged account name and password are provided, create the account
+if ($PrivAccountName -and $PrivAccountPassword) {
+    Create-PrivilegedAccount -AccountName $PrivAccountName -AccountPassword $PrivAccountPassword
+}
 
 if ($Interval -gt 0) {
     while ($true) {
@@ -381,4 +592,4 @@ else {
     Invoke-RemovalProcess
 }
 
-Write-Log -Message "Script execution completed." -Level "INFO"
+Write-Log -Message "Script execution completed." -Level "INFO" 
