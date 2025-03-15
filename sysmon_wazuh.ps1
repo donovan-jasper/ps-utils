@@ -267,6 +267,10 @@ if (Test-Path $wazuhConfFile) {
       <query>Event[System[Provider[@Name="Microsoft-Windows-Sysmon"]]]</query>
     </eventchannel>
   </wodle>
+  <localfile>
+  <location>Microsoft-Windows-Sysmon/Operational</location>
+  <log_format>eventchannel</log_format>
+  </localfile>
 '@
 
         # Insert before the final </ossec_config>
