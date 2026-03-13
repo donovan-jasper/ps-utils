@@ -1,0 +1,542 @@
+<group name="sysmon,">
+
+    <!--
+      =====================
+      =  Sysmon Event 1   =
+      =  Process Create   =
+      =====================
+    -->
+    <rule id="255000" level="12">
+        <if_group>sysmon_event1</if_group>
+        <field name="sysmon.image">\\powershell.exe||\\.ps1||\\.ps2</field>
+        <description>Sysmon - E1: Suspicious PowerShell Execution: $(sysmon.image)</description>
+        <group>sysmon_event1,powershell_execution,</group>
+    </rule>
+
+    <rule id="255001" level="10">
+        <if_group>sysmon_event1</if_group>
+        <field name="sysmon.image">\\cmd.exe||\\rundll32.exe||\\regsvr32.exe||\\cscript.exe||\\wscript.exe</field>
+        <description>Sysmon - E1: LOLBin usage (cmd/rundll32/regsvr32/cscript/wscript)</description>
+        <group>sysmon_event1,lolbin_usage,</group>
+    </rule>
+
+    <rule id="255002" level="9">
+        <if_group>sysmon_event1</if_group>
+        <field name="sysmon.commandLine">.*-enc.*||.*-encodedcommand.*</field>
+        <description>Sysmon - E1: Encoded Command in PowerShell: $(sysmon.commandLine)</description>
+        <group>sysmon_event1,encoded_command,</group>
+    </rule>
+
+    <rule id="255003" level="8">
+        <if_group>sysmon_event1</if_group>
+        <field name="sysmon.parentImage">\\winword.exe||\\excel.exe||\\outlook.exe</field>
+        <description>Sysmon - E1: Office-Spawned Process (potential macro abuse)</description>
+        <group>sysmon_event1,office_child_process,</group>
+    </rule>
+
+    <rule id="255004" level="7">
+        <if_group>sysmon_event1</if_group>
+        <field name="sysmon.commandLine">.*--inject.*||.*--shellcode.*</field>
+        <description>Sysmon - E1: Possible Injection Flag in CommandLine: $(sysmon.commandLine)</description>
+        <group>sysmon_event1,process_injection_flag,</group>
+    </rule>
+
+    <!-- Mimikatz detection -->
+    <rule id="255005" level="13">
+        <if_group>sysmon_event1</if_group>
+        <field name="sysmon.commandLine">.*mimikatz.*||.*sekurlsa.*</field>
+        <description>Sysmon - E1: Mimikatz usage: $(sysmon.commandLine)</description>
+        <group>sysmon_event1,mimikatz,credential_access,</group>
+    </rule>
+
+    <!-- sc.exe usage -->
+    <rule id="255006" level="10">
+        <if_group>sysmon_event1</if_group>
+        <field name="sysmon.image">\\sc.exe</field>
+        <field name="sysmon.commandLine">.*config.*||.*create.*||.*failure.*</field>
+        <description>Sysmon - E1: sc.exe used for service manipulation: $(sysmon.commandLine)</description>
+        <group>sysmon_event1,service_manipulation,</group>
+    </rule>
+
+    <!-- netsh usage -->
+    <rule id="255007" level="10">
+        <if_group>sysmon_event1</if_group>
+        <field name="sysmon.image">\\netsh.exe</field>
+        <field name="sysmon.commandLine">.*portproxy.*||.*firewall.*||.*add.*</field>
+        <description>Sysmon - E1: netsh used for firewall/port modifications</description>
+        <group>sysmon_event1,netsh_modification,</group>
+    </rule>
+
+    <!-- Example correlation approach: multiple suspicious PowerShell in short timeframe -->
+    <rule id="255008" level="14">
+        <if_group>sysmon_event1</if_group>
+        <field name="sysmon.image">\\powershell.exe</field>
+        <firedtimes>5</firedtimes>
+        <timeframe>60</timeframe>
+        <description>Sysmon - E1: 5 suspicious PowerShell processes in 1 minute</description>
+        <group>sysmon_event1,powershell_abuse,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 2: File creation time changed
+    -->
+    <rule id="255009" level="9">
+        <if_group>sysmon_event2</if_group>
+        <description>Sysmon - E2: File creation timestamp changed (tampering)</description>
+        <group>sysmon_event2,timestamp_tampering,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 3: Network Connection
+    -->
+    <rule id="255010" level="12">
+        <if_group>sysmon_event3</if_group>
+        <field name="sysmon.destinationPort">4444||6666||1337||8081</field>
+        <description>Sysmon - E3: Suspicious or RAT port: $(sysmon.destinationPort)</description>
+        <group>sysmon_event3,suspicious_port,</group>
+    </rule>
+
+    <rule id="255011" level="10">
+        <if_group>sysmon_event3</if_group>
+        <field name="sysmon.destinationHostname">.*malicious\.domain||.*bad\.co||.*hackersite\.org</field>
+        <description>Sysmon - E3: Connection to malicious domain: $(sysmon.destinationHostname)</description>
+        <group>sysmon_event3,malicious_domain,</group>
+    </rule>
+
+    <rule id="255012" level="8">
+        <if_group>sysmon_event3</if_group>
+        <field name="sysmon.protocol">RAW||ICMP||.*UNKNOWN.*</field>
+        <description>Sysmon - E3: Unusual protocol: $(sysmon.protocol)</description>
+        <group>sysmon_event3,non_standard_protocol,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 4: Sysmon service state changed
+    -->
+    <rule id="255013" level="6">
+        <if_group>sysmon_event4</if_group>
+        <description>Sysmon - E4: Sysmon service state changed (start/stop)</description>
+        <group>sysmon_event4,sysmon_service,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 5: Process Terminated
+    -->
+    <rule id="255014" level="3">
+        <if_group>sysmon_event5</if_group>
+        <description>Sysmon - E5: Process Terminated: $(sysmon.image)</description>
+        <group>sysmon_event5,process_terminated,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 6: Driver Loaded
+    -->
+    <rule id="255015" level="12">
+        <if_group>sysmon_event6</if_group>
+        <field name="sysmon.imageLoaded">.*\\Temp\\.*\.sys||.*\\AppData\\.*\.sys</field>
+        <description>Sysmon - E6: Potential rogue driver loaded: $(sysmon.imageLoaded)</description>
+        <group>sysmon_event6,rogue_driver,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 7: Image Loaded
+    -->
+    <rule id="255016" level="11">
+        <if_group>sysmon_event7</if_group>
+        <field name="sysmon.imageLoaded">.*\\Temp\\.*\.dll||.*\\AppData\\.*\.dll</field>
+        <description>Sysmon - E7: DLL loaded from Temp/AppData: $(sysmon.imageLoaded)</description>
+        <group>sysmon_event7,dll_injection,</group>
+    </rule>
+
+    <rule id="255017" level="10">
+        <if_group>sysmon_event7</if_group>
+        <field name="sysmon.signature">Unsigned||Unknown</field>
+        <description>Sysmon - E7: Unsigned or unknown DLL: $(sysmon.imageLoaded)</description>
+        <group>sysmon_event7,unverified_dll,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 8: CreateRemoteThread
+    -->
+    <rule id="255018" level="12">
+        <if_group>sysmon_event8</if_group>
+        <description>Sysmon - E8: CreateRemoteThread detected (possible injection)</description>
+        <group>sysmon_event8,remote_thread_injection,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 9: RawAccessRead
+    -->
+    <rule id="255019" level="11">
+        <if_group>sysmon_event9</if_group>
+        <description>Sysmon - E9: Raw disk/volume read (possible credential dumping)</description>
+        <group>sysmon_event9,raw_access,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 10: ProcessAccess
+    -->
+    <rule id="255020" level="12">
+        <if_group>sysmon_event10</if_group>
+        <field name="sysmon.grantedAccess">0x1FFFFF||0x1F0FFF||0x1478</field>
+        <description>Sysmon - E10: Potential process injection (high access rights)</description>
+        <group>sysmon_event10,process_injection,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 11: FileCreate
+    -->
+    <rule id="255021" level="10">
+        <if_group>sysmon_event11</if_group>
+        <field name="sysmon.targetFilename">.*\\Temp\\.*\.exe||.*\\AppData\\.*\.exe</field>
+        <description>Sysmon - E11: EXE created in Temp/AppData: $(sysmon.targetFilename)</description>
+        <group>sysmon_event11,suspicious_file_creation,</group>
+    </rule>
+
+    <rule id="255022" level="7">
+        <if_group>sysmon_event11</if_group>
+        <field name="sysmon.targetFilename">.*\\.bat||.*\\.vbs</field>
+        <description>Sysmon - E11: Script file created: $(sysmon.targetFilename)</description>
+        <group>sysmon_event11,script_creation,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 12: RegistryEvent (Object create/delete)
+    -->
+    <rule id="255023" level="9">
+        <if_group>sysmon_event12</if_group>
+        <field name="sysmon.targetObject">.*Run\\.*||.*RunOnce\\.*</field>
+        <description>Sysmon - E12: Registry create/delete in Run key: $(sysmon.targetObject)</description>
+        <group>sysmon_event12,registry_persistence,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 13: RegistryEvent (Value Set)
+    -->
+    <rule id="255024" level="10">
+        <if_group>sysmon_event13</if_group>
+        <field name="sysmon.targetObject">.*\\Run\\.*||.*\\RunOnce\\.*</field>
+        <description>Sysmon - E13: Registry value set in Run key: $(sysmon.targetObject)</description>
+        <group>sysmon_event13,registry_persistence,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 14: RegistryEvent (Key/Value Rename)
+    -->
+    <rule id="255025" level="8">
+        <if_group>sysmon_event14</if_group>
+        <description>Sysmon - E14: Registry key/value renamed: $(sysmon.targetObject)</description>
+        <group>sysmon_event14,registry_rename,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 15: FileCreateStreamHash
+    -->
+    <rule id="255026" level="12">
+        <if_group>sysmon_event15</if_group>
+        <field name="sysmon.targetFilename">.*:.*</field>
+        <description>Sysmon - E15: Alternate Data Stream usage: $(sysmon.targetFilename)</description>
+        <group>sysmon_event15,ads_detected,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 16: Sysmon config changed
+    -->
+    <rule id="255027" level="6">
+        <if_group>sysmon_event16</if_group>
+        <description>Sysmon - E16: Sysmon configuration changed</description>
+        <group>sysmon_event16,sysmon_config_changed,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 17 & 18: PipeEvent
+    -->
+    <rule id="255028" level="8">
+        <if_group>sysmon_event17</if_group>
+        <field name="sysmon.pipeName">.*\\\\LSARPC||.*\\\\samr</field>
+        <description>Sysmon - E17: Sensitive pipe created: $(sysmon.pipeName)</description>
+        <group>sysmon_event17,pipe_sensitive,</group>
+    </rule>
+
+    <rule id="255029" level="8">
+        <if_group>sysmon_event18</if_group>
+        <field name="sysmon.pipeName">.*\\\\LSARPC||.*\\\\samr</field>
+        <description>Sysmon - E18: Connection to sensitive pipe: $(sysmon.pipeName)</description>
+        <group>sysmon_event18,pipe_sensitive,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 19, 20, 21: WMIEvent
+    -->
+    <rule id="255030" level="11">
+        <if_group>sysmon_event19</if_group>
+        <description>Sysmon - E19: WMI filter created (potential persistence)</description>
+        <group>sysmon_event19,wmi_event,</group>
+    </rule>
+
+    <rule id="255031" level="11">
+        <if_group>sysmon_event20</if_group>
+        <description>Sysmon - E20: WMI consumer created (potential persistence)</description>
+        <group>sysmon_event20,wmi_event,</group>
+    </rule>
+
+    <rule id="255032" level="11">
+        <if_group>sysmon_event21</if_group>
+        <description>Sysmon - E21: WMI binding (filter-to-consumer) created</description>
+        <group>sysmon_event21,wmi_event,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 22: DNS Query
+    -->
+    <rule id="255033" level="12">
+        <if_group>sysmon_event22</if_group>
+        <field name="sysmon.queryName">.*evil-domain\.com||.*hacker\.net||.*malware\.io||.*badsite\.xyz</field>
+        <description>Sysmon - E22: Malicious DNS query: $(sysmon.queryName)</description>
+        <group>sysmon_event22,malicious_dns,</group>
+    </rule>
+
+    <rule id="255034" level="5">
+        <if_group>sysmon_event22</if_group>
+        <field name="sysmon.queryName">.*tor\.exit||.*\.onion</field>
+        <description>Sysmon - E22: Potential Tor or .onion DNS request: $(sysmon.queryName)</description>
+        <group>sysmon_event22,tor_dns,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 23: FileDelete
+    -->
+    <rule id="255035" level="7">
+        <if_group>sysmon_event23</if_group>
+        <field name="sysmon.targetFilename">.*\\Temp\\.*\.exe||.*\\Temp\\.*\.dll</field>
+        <description>Sysmon - E23: Deletion of suspicious file in Temp: $(sysmon.targetFilename)</description>
+        <group>sysmon_event23,suspicious_file_deletion,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 24: ProcessTampering
+    -->
+    <rule id="255036" level="12">
+        <if_group>sysmon_event24</if_group>
+        <description>Sysmon - E24: Potential process tampering or hollowing</description>
+        <group>sysmon_event24,process_tampering,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 25: FileBlockExecuted
+    -->
+    <rule id="255037" level="12">
+        <if_group>sysmon_event25</if_group>
+        <description>Sysmon - E25: File execution blocked by Sysmon</description>
+        <group>sysmon_event25,file_blocked,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 26: ClipboardChange
+    -->
+    <rule id="255038" level="8">
+        <if_group>sysmon_event26</if_group>
+        <description>Sysmon - E26: Clipboard content changed (possible data capture)</description>
+        <group>sysmon_event26,clipboard_monitoring,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 27: FileBlockShredding
+    -->
+    <rule id="255039" level="12">
+        <if_group>sysmon_event27</if_group>
+        <description>Sysmon - E27: FileBlockShredding event triggered (file deletion policy)</description>
+        <group>sysmon_event27,file_shredding,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 28: (e.g., FileExfilAttempt)
+    -->
+    <rule id="255040" level="12">
+        <if_group>sysmon_event28</if_group>
+        <description>Sysmon - E28: Potential file exfil attempt blocked</description>
+        <group>sysmon_event28,file_exfil,</group>
+    </rule>
+
+
+    <!--
+      Sysmon Event 29, 30, 31 - Hypothetical or future
+    -->
+    <rule id="255041" level="12">
+        <if_group>sysmon_event29</if_group>
+        <description>Sysmon - E29: Potential advanced or custom event ID 29</description>
+        <group>sysmon_event29,custom_event,</group>
+    </rule>
+
+    <rule id="255042" level="12">
+        <if_group>sysmon_event30</if_group>
+        <description>Sysmon - E30: Potential advanced or custom event ID 30</description>
+        <group>sysmon_event30,custom_event,</group>
+    </rule>
+
+    <rule id="255043" level="12">
+        <if_group>sysmon_event31</if_group>
+        <description>Sysmon - E31: Potential advanced or custom event ID 31</description>
+        <group>sysmon_event31,custom_event,</group>
+    </rule>
+
+</group>
+
+<group name="sysmon_extras,">
+
+    <!--
+      Example correlation #1:
+      Mimikatz usage (255005) + suspicious RAT port (255010) within 2 minutes
+    -->
+    <rule id="260000" level="14">
+        <if_sid>255005</if_sid>  <!-- Mimikatz usage -->
+        <description>Correlation: Mimikatz usage + suspicious RAT port within 2 mins</description>
+        <firedtimes>1</firedtimes>
+        <timeframe>120</timeframe>
+        <if_matched_sid>255010</if_matched_sid> <!-- suspicious port usage -->
+        <group>sysmon_extras,correlation,mimikatz_port,</group>
+    </rule>
+
+    <!--
+      Example correlation #2:
+      Multiple malicious DNS queries (255033) in short timeframe 
+      => advanced alert
+    -->
+    <rule id="260001" level="14">
+        <if_sid>255033</if_sid>
+        <description>Correlation: 3 malicious DNS queries in 60s</description>
+        <firedtimes>3</firedtimes>
+        <timeframe>60</timeframe>
+        <group>sysmon_extras,correlation,malicious_dns,</group>
+    </rule>
+
+    <!--
+      Example correlation #3:
+      Office macro child (255003) + multiple suspicious PowerShell (255000)
+      => advanced macro exploit suspicion
+    -->
+    <rule id="260002" level="14">
+        <if_sid>255003</if_sid>  <!-- Office-based child process -->
+        <description>Correlation: Office-based child (E1) + suspicious PowerShell => macro exploit</description>
+        <firedtimes>1</firedtimes>
+        <timeframe>180</timeframe>
+        <if_matched_sid>255000</if_matched_sid> <!-- suspicious powershell -->
+        <group>sysmon_extras,correlation,macro_exploit,</group>
+    </rule>
+
+    <!--
+      Example correlation #4:
+      Process tampering (255036) + high-access ProcessAccess (255020)
+      => strong suspicion of injection or hollowing
+    -->
+    <rule id="260003" level="14">
+        <if_sid>255036</if_sid>  <!-- process tampering (E24) -->
+        <description>Correlation: Tampering (E24) + high access rights (E10) => injection/hollowing</description>
+        <firedtimes>1</firedtimes>
+        <timeframe>300</timeframe>
+        <if_matched_sid>255020</if_matched_sid> <!-- E10 injection -->
+        <group>sysmon_extras,correlation,process_injection,</group>
+    </rule>
+
+    <!--
+      Example correlation #5:
+      Multiple new driver loads (255015) + raw disk read (255019)
+      => advanced ring0 hooking suspicion
+    -->
+    <rule id="260004" level="14">
+        <if_sid>255015</if_sid>  <!-- driver loaded -->
+        <description>Correlation: Multiple driver loads + raw disk read => advanced hooking</description>
+        <firedtimes>2</firedtimes>
+        <timeframe>300</timeframe>
+        <if_matched_sid>255019</if_matched_sid> <!-- raw disk read -->
+        <group>sysmon_extras,correlation,rogue_driver,</group>
+    </rule>
+
+    <!--
+      Example correlation #6:
+      ADS usage (255026) + suspicious file creation in same timeframe => stealthy file usage
+    -->
+    <rule id="260005" level="13">
+        <if_sid>255026</if_sid>  <!-- ADS usage -->
+        <description>Correlation: Alternate Data Stream + suspicious file creation => stealthy Trojaning</description>
+        <firedtimes>1</firedtimes>
+        <timeframe>180</timeframe>
+        <if_matched_sid>255021</if_matched_sid> <!-- suspicious .exe creation in Temp/AppData -->
+        <group>sysmon_extras,correlation,ads_file_creation,</group>
+    </rule>
+
+    <!--
+      Example correlation #7:
+      WMI events (255030-255032) quickly repeated => advanced lateral movement or persistence
+    -->
+    <rule id="260006" level="14">
+        <if_sid>255030,255031,255032</if_sid>  <!-- E19/E20/E21 WMI events -->
+        <description>Correlation: 3 WMI events in short timeframe => advanced WMI-based persistence</description>
+        <firedtimes>3</firedtimes>
+        <timeframe>120</timeframe>
+        <group>sysmon_extras,correlation,wmi_lateral,</group>
+    </rule>
+
+    <!--
+      Example correlation #8:
+      Clipboard changes (255038) + suspicious powershell => potential data exfil 
+    -->
+    <rule id="260007" level="12">
+        <if_sid>255038</if_sid> <!-- clipboard change -->
+        <description>Correlation: Clipboard change + suspicious PowerShell => data exfil attempt</description>
+        <firedtimes>1</firedtimes>
+        <timeframe>120</timeframe>
+        <if_matched_sid>255000</if_matched_sid> <!-- suspicious powershell -->
+        <group>sysmon_extras,correlation,clipboard_exfil,</group>
+    </rule>
+
+    <!--
+      Example correlation #9:
+      Multiple blocked file executions (255037) => repeated malicious attempts
+    -->
+    <rule id="260008" level="13">
+        <if_sid>255037</if_sid> <!-- file_blocked -->
+        <description>Correlation: 3 Sysmon file-blocked events in 5 mins => repeated malicious attempts</description>
+        <firedtimes>3</firedtimes>
+        <timeframe>300</timeframe>
+        <group>sysmon_extras,correlation,file_blocked,</group>
+    </rule>
+
+    <!--
+      Example correlation #10:
+      Mimikatz (255005) + raw_access read (255019) => advanced credential dumping
+    -->
+    <rule id="260009" level="14">
+        <if_sid>255005</if_sid>  <!-- Mimikatz usage -->
+        <description>Correlation: Mimikatz + raw disk read => advanced credential dumping attempt</description>
+        <firedtimes>1</firedtimes>
+        <timeframe>300</timeframe>
+        <if_matched_sid>255019</if_matched_sid> <!-- raw disk read (E9) -->
+        <group>sysmon_extras,correlation,advanced_cred_dump,</group>
+    </rule>
+
+</group>
