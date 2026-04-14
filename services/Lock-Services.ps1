@@ -21,6 +21,8 @@
     The one account that keeps full control. Format: DOMAIN\username or .\username.
 .PARAMETER SnapshotFile
     Path to existing services snapshot. If not provided, runs Snapshot-Services.ps1.
+.PARAMETER Include
+    Lock only these specific services. If not specified, locks all services.
 .PARAMETER Exclude
     Service names to skip (e.g., critical services you don't want to touch).
 .NOTES
@@ -33,6 +35,8 @@ param(
     [string]$AdminAccount,
 
     [string]$SnapshotFile = (Join-Path $PSScriptRoot "services-snapshot.json"),
+
+    [string[]]$Include = @(),
 
     [string[]]$Exclude = @()
 )
@@ -70,6 +74,7 @@ Write-Host "Excluding: $($Exclude -join ', ')" -ForegroundColor Yellow
 
 $changes = @()
 foreach ($svc in $snapshot) {
+    if ($Include.Count -gt 0 -and $Include -notcontains $svc.Name) { continue }
     if ($Exclude -contains $svc.Name) { continue }
     if ($svc.SDDL -eq $lockedSDDL) { continue }
     $changes += [PSCustomObject]@{
